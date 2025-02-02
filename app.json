@@ -11,6 +11,9 @@
     "ios": {
       "supportsTablet": true
     },
+    "extra": {
+      "OPENAI_API_KEY": "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"
+    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -32,7 +35,9 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-sqlite",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
