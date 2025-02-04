@@ -1,9 +1,9 @@
-import { Alert, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, View, Text, TextInput } from 'react-native';
+import { Alert, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, View, Text, TextInput,Image } from 'react-native';
 import { useState } from 'react';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
-  apiKey: "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",  // Replace with your OpenAI API Key
+  apiKey: "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",
 });
 
 export default function HomeScreen() {
@@ -18,27 +18,21 @@ export default function HomeScreen() {
     setIsLoading(true);
     try {
       // Step 1: Send the raw question to the backend for embedding
-      const response = await fetch('http://192.168.1.67/generate_embedding/', { // New endpoint to generate embedding
+      const embeddingResponse = await fetch('http://192.168.1.67:8000/generate_embedding/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          question: newQuestion,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: newQuestion }),
       });
+
+      const embeddingData = await embeddingResponse.json();
   
-      const data = await response.json();
-  
-      if (response.ok && data.embedding) {
+      if (embeddingResponse.ok && embeddingData.embedding) {
         // Step 2: Send the generated embedding to the search endpoint
-        const searchResponse = await fetch('http://192.168.1.67/search/', {
+        const searchResponse = await fetch('http://192.168.1.67:8000/search/', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            embedding: data.embedding,  // Use the generated embedding
+            embedding: embeddingData.embedding,
             top_k: 3,
           }),
         });
@@ -46,22 +40,25 @@ export default function HomeScreen() {
         const searchData = await searchResponse.json();
   
         if (searchResponse.ok) {
-          // Step 3: Display the search results
-          setResponse(
-            searchData.results.map((result: any, index: number) => (
-              <View key={index} style={styles.resultItem}>
-                <Text style={styles.resultText}>
-                  <Text style={styles.resultRank}>Rank: {result.rank}</Text>
-                  {" | "} 
-                  <Text style={styles.resultText}>Page: {result.page_number}</Text>
-                  {" | "} 
-                  <Text style={styles.resultText}>Distance: {result.distance.toFixed(4)}</Text>
-                  {"\n"}
-                  {result.chunk_text}
-                </Text>
-              </View>
-            ))
-          );
+          // Step 3: Combine the search results text into a single string
+          const resultsText = searchData.results.map((result) => result.chunk_text).join("\n\n");
+
+          // Step 4: Call the summarize endpoint with the results text
+          const summarizeResponse = await fetch('http://192.168.1.67:8000/summarize/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: resultsText }),
+          });
+
+          const summaryData = await summarizeResponse.json();
+          console.log('Summarize Response:', summaryData);
+          
+          if (summarizeResponse.ok) {
+            // Step 5: Display the summarized response
+            setResponse(summaryData.summary);
+          } else {
+            Alert.alert('Error', `Failed to summarize the search results: ${summaryData.error || 'Unknown error'}`);
+          }
         } else {
           Alert.alert('Error', 'Something went wrong with the search request');
         }
@@ -75,31 +72,46 @@ export default function HomeScreen() {
       setIsLoading(false);
     }
   };
+
+  const handleReset = () => {
+    setNewQuestion('');
+    setResponse('');
+  };
+  
+
   
 
   return (
     <ScrollView contentContainerStyle={styles.scrollView}>
       <SafeAreaView style={styles.safeAreaView}>
         <View style={styles.bodyContainer}>
-          <Text style={styles.mainTitle}>Welcome</Text>
           <TextInput
               style={styles.inputWrap}
               onChangeText={setNewQuestion}
               placeholder="Ask a question"
               multiline
+              value={newQuestion}
             />
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
+                style={styles.customButton}
+                onPress={handleSearch}
+            >
+              <Text style={styles.buttonText}>Send</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
+
+            <TouchableOpacity
               style={styles.customButton}
-              onPress={handleSearch}
-          >
-            <Text style={styles.buttonText}>Send</Text>
-          </TouchableOpacity>
-
+              onPress={handleReset}
+            >
+              <Text style={styles.buttonText}>Reset</Text>
+            </TouchableOpacity>
+          </View>
           {isLoading ? (
             <Text style={styles.loadingText}>Searching...</Text>
           ) : (
-            <View>{response}</View>
+            <View><Text style={styles.responseText}>{response}</Text></View>
           )}
         </View>
       </SafeAreaView>
@@ -111,19 +123,14 @@ const styles = StyleSheet.create({
   bodyContainer: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#0B2660',
+    backgroundColor: '#1d336d',
   },
   safeAreaView: {
     flex: 1,
-    backgroundColor: '#F3EFF0',
+    backgroundColor: '#1d336d',
   },
   scrollView: {
     flexGrow: 1,
-  },
-  mainTitle: {
-    color: '#FFE08A',
-    fontSize: 24,
-    fontWeight: 'bold',
   },
   inputWrap:{
     borderColor: 'gray',
@@ -135,27 +142,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
-    marginTop:6,
+    marginTop:10,
     paddingHorizontal:10,
-    height:70,
+    height:130,
+    textAlignVertical: 'top',
+    marginBottom:10,
+  },
+  buttonContainer: {
+    flexDirection: 'row',  // Aligns buttons horizontally
+    justifyContent: 'space-between', // Adds space between them
+    alignItems: 'center',  // Ensures vertical alignment
+    marginTop: 10,  // Adjust spacing as needed
   },
   customButton: {
-    backgroundColor: '#bf4da2',
-    paddingVertical: 12,
-    marginBottom:10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-    justifyContent: 'center',
+    flex: 1,  // Makes both buttons take equal width
+    marginHorizontal: 5,  // Adds spacing between buttons
+    padding: 10,
+    backgroundColor: '#fff',  // Example color
+    borderRadius: 5,
     alignItems: 'center',
-    width:'100%',
   },
+  
   buttonText: {
-    color: '#fff',
+    color: '#1d336d',
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -164,17 +173,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     marginBottom: 20,
+    marginTop: 20,
   },
-  resultItem: {
-    padding: 10,
-    backgroundColor: '#fff',
-    marginBottom: 10,
-    borderRadius: 5,
-  },
-  resultRank: {
-    fontWeight: 'bold',
-  },
-  resultText: {
-    color: '#333',
-  },
+  responseText: {
+    color: '#fff', // or any color you prefer
+    fontSize: 16,
+    marginTop: 10,
+    lineHeight: 22,
+  }
 });
